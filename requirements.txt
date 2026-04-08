@@ -1,0 +1,7 @@
+anthropic
+python-dotenv
+google-genai
+httpx
+html2text
+beautifulsoup4
+PyYAML

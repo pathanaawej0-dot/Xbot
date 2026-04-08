@@ -1,0 +1,52 @@
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any, Optional, Dict
+
+@dataclass
+class ToolResult:
+    """Standard return type for all Xbot tools."""
+    success: bool
+    content: str  # The primary info the LLM sees
+    error: Optional[str] = field(default=None)
+    details: Optional[Dict[str, Any]] = field(default_factory=dict)
+
+class BaseTool(ABC):
+    """Base class for all Xbot tools.
+    
+    Attributes:
+        name (str): The identifier for the tool (e.g., 'exec').
+        description (str): Detailed docstring the LLM uses to understand when/how to call it.
+        owner_only (bool): If True, only the system owner can execute it.
+    """
+    name: str = ""
+    description: str = ""
+    owner_only: bool = False
+    
+    # General context or tools can be injected here as needed
+    # But hard-coded system guards are removed to allow native access.
+    
+    @abstractmethod
+    async def execute(self, **kwargs) -> ToolResult:
+        """Execute the tool logic asynchronously.
+        
+        Args:
+            **kwargs: Arguments passed by the LLM via tool call.
+            
+        Returns:
+            ToolResult: Structured success/failure and content.
+        """
+        pass
+    
+    def get_schema(self) -> Dict[str, Any]:
+        """Returns the JSON Schema for the tool's input parameters.
+        Must be implemented by subclasses or derived from type hints.
+        """
+        raise NotImplementedError("Each tool must define its input schema.")
+
+    def to_definition(self) -> Dict[str, Any]:
+        """Convert the tool to the format required by the LLM API."""
+        return {
+            "name": self.name,
+            "description": self.description.strip(),
+            "input_schema": self.get_schema()
+        }
