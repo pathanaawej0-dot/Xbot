@@ -58,36 +58,30 @@ IMPORTANT: This tool provides full system access. Use it wisely.
     ) -> ToolResult:
         start_time = time.monotonic()
         
-        # 1. Resolve workdir (Limitless)
-        resolved_workdir = os.path.abspath(workdir) if workdir else os.getcwd()
-            
-        # 2. Build environment
+        # 1. Build environment
         exec_env = os.environ.copy()
         if env:
             exec_env.update(env)
             
-        # 3. Create subprocess
         try:
+            # 2. Create subprocess
             process = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=resolved_workdir,
+                cwd=workdir,
                 env=exec_env,
                 limit=10_000_000  # 10MB safety limit on output
             )
             
-            # 4. Handle Background Mode
+            # 3. Handle Background Mode
             if background:
-                # In a real implementation, we would register this process with a process manager.
-                # Since we're in the middle of a migration, we'll return the PID as the session_id.
-                return ToolResult(
-                    success=True,
-                    content=f"Background process started: PID={process.pid}. Use 'process' tool to interact with it.",
+                return ToolResult.text_result(
+                    f"Background process started: PID={process.pid}",
                     details={"pid": process.pid, "session_id": str(process.pid)}
                 )
                 
-            # 5. Handle Synchronous Mode with Timeout
+            # 4. Handle Synchronous Mode with Timeout
             try:
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
@@ -100,31 +94,59 @@ IMPORTANT: This tool provides full system access. Use it wisely.
                     await process.wait()
                 except Exception:
                     pass
-                return ToolResult(
-                    success=False,
-                    error=f"Execution Timed Out: Command '{command}' failed to finish within {timeout_sec} seconds.",
-                    content="",
-                    details={"status": "killed"}
+                try:
+                    stdout, stderr = await process.communicate()
+                except Exception:
+                    stdout, stderr = b"", b""
+                
+                return ToolResult.error_result(
+                    f"Command timed out after {timeout_sec} seconds",
+                    details={
+                        "timeout": True,
+                        "timeout_sec": timeout_sec,
+                        "stdout": stdout.decode(errors='replace'),
+                        "stderr": stderr.decode(errors='replace'),
+                        "duration_ms": int((time.monotonic() - start_time) * 1000)
+                    }
                 )
                 
+            # 5. Check Exit Code
+            if process.returncode != 0:
+                return ToolResult.error_result(
+                    f"Command exited with code {process.returncode}",
+                    details={
+                        "returncode": process.returncode,
+                        "stdout": stdout.decode(errors='replace'),
+                        "stderr": stderr.decode(errors='replace'),
+                        "duration_ms": int((time.monotonic() - start_time) * 1000)
+                    }
+                )
+
             # 6. Success Result
             duration_ms = int((time.monotonic() - start_time) * 1000)
-            stdout_str = stdout.decode(errors='replace')
-            stderr_str = stderr.decode(errors='replace')
-            
-            return ToolResult(
-                success=(process.returncode == 0),
-                content=stdout_str if stdout_str else f"(No stdout) [Exit code: {process.returncode}]",
+            return ToolResult.text_result(
+                stdout.decode(errors='replace') if stdout else "",
                 details={
-                    "returncode": process.returncode,
-                    "stderr": stderr_str,
+                    "returncode": 0,
+                    "stderr": stderr.decode(errors='replace'),
                     "duration_ms": duration_ms
                 }
             )
             
+        except FileNotFoundError as e:
+            cmd_name = command.split()[0] if command else "unknown"
+            return ToolResult.error_result(
+                f"Command not found: {cmd_name}",
+                details={"error": str(e), "command": command}
+            )
+        except PermissionError as e:
+            return ToolResult.error_result(
+                f"Permission denied: {command}",
+                details={"error": str(e)}
+            )
         except Exception as e:
-            return ToolResult(
-                success=False,
-                error=f"Shell Execution Failed: {str(e)}",
-                content=""
+            error_type = type(e).__name__
+            return ToolResult.error_result(
+                f"Shell Execution Error ({error_type}): {str(e)}",
+                details={"error_type": error_type, "command": command}
             )

@@ -32,16 +32,17 @@ IMPORTANT: The 'target' string must be UNIQUE. For complex or multi-line changes
         }
 
     async def execute(self, path: str, target: str, replacement: str) -> ToolResult:
-        """Edit a file on the system by string replacement."""
+        """Edit a file on the system by string replacement with diagnostic support."""
         try:
             # 1. Normalize path
             full_path = os.path.normpath(path)
-            if not os.path.isabs(full_path):
-                full_path = os.path.abspath(full_path)
             
             # 2. Check if file exists
             if not os.path.exists(full_path):
-                return ToolResult(success=False, error=f"File Not Found: '{full_path}'", content="")
+                return ToolResult.error_result(
+                    f"File not found: {path}",
+                    details={"path": path}
+                )
                 
             # 3. Read original content
             with open(full_path, 'r', encoding='utf-8') as f:
@@ -50,16 +51,14 @@ IMPORTANT: The 'target' string must be UNIQUE. For complex or multi-line changes
             # 4. Check uniqueness
             count = content.count(target)
             if count == 0:
-                return ToolResult(
-                    success=False, 
-                    error=f"Edit Failure: The target string was not found in '{path}'. Please verify indentation and whitespace.", 
-                    content=""
+                return ToolResult.error_result(
+                    f"Target string not found in '{path}'",
+                    details={"path": path, "target_length": len(target)}
                 )
             if count > 1:
-                return ToolResult(
-                    success=False, 
-                    error=f"Edit Failure: Found {count} occurrences of the target string. The target must be unique to avoid multi-replacement errors.", 
-                    content=""
+                return ToolResult.error_result(
+                    f"Found {count} occurrences of the target string in '{path}'",
+                    details={"path": path, "occurrences": count}
                 )
                 
             # 5. Replace and Write
@@ -67,11 +66,18 @@ IMPORTANT: The 'target' string must be UNIQUE. For complex or multi-line changes
             with open(full_path, 'w', encoding='utf-8') as f:
                 f.write(new_content)
                 
-            return ToolResult(
-                success=True,
-                content=f"Successfully updated '{path}' by replacing the target block.",
+            return ToolResult.text_result(
+                f"Successfully updated '{path}' by replacing the unique target block.",
                 details={"file": path, "replaced_count": 1}
             )
             
+        except PermissionError:
+            return ToolResult.error_result(
+                f"Permission denied: {path}",
+                details={"path": path}
+            )
         except Exception as e:
-            return ToolResult(success=False, error=f"Edit Operation Failed: {str(e)}", content="")
+            return ToolResult.error_result(
+                f"Edit Operation Failed: {type(e).__name__}: {str(e)}",
+                details={"path": path}
+            )

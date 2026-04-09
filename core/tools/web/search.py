@@ -46,48 +46,44 @@ EXAMPLES:
         }
 
     async def execute(self, query: str, num_results: int = 10) -> ToolResult:
-        """Execute a grounded search via Gemini."""
+        """Execute a grounded search via Gemini with diagnostic support."""
         if not self.api_key:
-            return ToolResult(success=False, error="Configuration Error: GOOGLE_API_KEY not found in environment.", content="")
+            return ToolResult.error_result(
+                "GOOGLE_API_KEY not found in environment.",
+                hint="You must set the 'GOOGLE_API_KEY' in your .env file to enable web search capabilities."
+            )
             
-        # We prompt Gemini internally to search the web and return structured JSON.
+        # Internal search prompt
         prompt = f"""Search the live web for: {query}
-
 Return exactly {num_results} search results in this JSON array format:
 [
   {{"title": "Result Title", "url": "https://example.com", "snippet": "A brief summary of the result..."}},
   ...
 ]
-
-Return ONLY the JSON. No conversational text."""
+Return ONLY the JSON."""
 
         try:
             async with httpx.AsyncClient() as client:
-                # 1. POST request to Gemini GenerateContent with Search Grounding tool
                 response = await client.post(
                     f"{self.base_url}?key={self.api_key}",
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "response_mime_type": "application/json"
-                        },
+                        "generationConfig": {"response_mime_type": "application/json"},
                         "tools": [{"google_search_retrieval": {"dynamic_retrieval_config": {"mode": "MODE_DYNAMIC", "dynamic_threshold": 0.3}}}]
                     },
                     timeout=30
                 )
                 
                 if response.status_code != 200:
-                    return ToolResult(
-                        success=False, 
-                        error=f"Search Engine Error: API returned status {response.status_code}", 
-                        content="",
-                        details={"response": response.text}
+                    return ToolResult.error_result(
+                        f"Search Engine Error: Status {response.status_code}",
+                        details={"response": response.text},
+                        hint="The Google API might be down or your key is quota-limited. Check Google Cloud Console."
                     )
                     
                 data = response.json()
-                
-                # 2. Extract Response JSON
                 results_json = ""
+                
                 try:
                     candidates = data.get('candidates', [])
                     if candidates:
@@ -98,28 +94,27 @@ Return ONLY the JSON. No conversational text."""
                                 break
                     
                     if not results_json:
-                        return ToolResult(success=False, error="Search Error: No valid content returned from Gemini.", content="")
+                        return ToolResult.error_result("No valid content returned from Gemini.")
                         
-                    # Parse the string back to a list of dicts for pretty printing
                     results = json.loads(results_json)
-                    
-                    # 3. Format result string for the LLM
                     formatted_results = ""
                     for i, res in enumerate(results):
                         formatted_results += f"{i+1}. {res.get('title')}\n   URL: {res.get('url')}\n   Snippet: {res.get('snippet')}\n\n"
                     
-                    return ToolResult(
-                        success=True,
-                        content=formatted_results if formatted_results else "(No results found)",
+                    return ToolResult.text_result(
+                        formatted_results if formatted_results else "(No results found)",
                         details={"query": query, "count": len(results)}
                     )
                     
                 except Exception as parse_err:
-                    return ToolResult(
-                        success=False, 
-                        error=f"Search Parsing Error: Failed to extract results. {str(parse_err)}", 
-                        content=results_json
+                    return ToolResult.error_result(
+                        f"Search Parsing Error: {str(parse_err)}",
+                        details={"raw_response": results_json}
                     )
                     
+        except httpx.TimeoutException:
+            return ToolResult.error_result(
+                "Search request timed out"
+            )
         except Exception as e:
-            return ToolResult(success=False, error=f"Web Search Operation Failed: {str(e)}", content="")
+            return ToolResult.error_result(f"Web Search Operation Failed: {type(e).__name__}: {str(e)}")

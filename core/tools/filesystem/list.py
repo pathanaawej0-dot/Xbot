@@ -33,23 +33,25 @@ EXAMPLES:
         }
 
     async def execute(self, path: str = ".") -> ToolResult:
-        """List directory contents from the system."""
+        """List directory contents with diagnostic support."""
         try:
             # 1. Normalize path
             full_path = os.path.normpath(path)
-            if not os.path.isabs(full_path):
-                full_path = os.path.abspath(full_path)
             
             # 2. Check if exists
             if not os.path.exists(full_path):
-                return ToolResult(success=False, error=f"Directory Not Found: '{full_path}'", content="")
-            if not os.path.is_dir(full_path):
-                return ToolResult(success=False, error=f"Not a Directory: '{full_path}' is a file.", content="")
+                return ToolResult.error_result(
+                    f"Directory not found: {path}",
+                    details={"path": path}
+                )
+            if not os.path.isdir(full_path):
+                return ToolResult.error_result(
+                    f"Path is not a directory: {path}",
+                    details={"path": path}
+                )
                 
             # 3. List entries
             entries = os.listdir(full_path)
-            
-            # Sort for consistency
             entries.sort()
             
             # Formatted list
@@ -61,11 +63,20 @@ EXAMPLES:
                 else:
                     output += f"[FILE] {entry}\n"
                     
-            return ToolResult(
-                success=True,
-                content=output if output else "(Directory is empty)",
+            return ToolResult.text_result(
+                output if output else "(Directory is empty)",
                 details={"path": path, "count": len(entries)}
             )
             
+        except PermissionError:
+            return ToolResult.error_result(
+                f"Permission denied: {path}",
+                details={"path": path},
+                hint="You may need elevated privileges to access this directory."
+            )
         except Exception as e:
-            return ToolResult(success=False, error=f"List Operation Failed: {str(e)}", content="")
+            return ToolResult.error_result(
+                f"List Operation Failed: {type(e).__name__}: {str(e)}",
+                details={"path": path},
+                hint="Verify the path is valid and reachable."
+            )

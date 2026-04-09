@@ -38,62 +38,68 @@ IMPORTANT: Respect user privacy. Do not read sensitive personal files (like SSH 
         }
 
     async def execute(self, path: str, offset: int = 0, limit: int = 500) -> ToolResult:
-        """Read file content from the system."""
+        """Read file content from the system with diagnostic support."""
         try:
-            # 1. Normalize path for the system
+            # 1. Normalize path
             full_path = os.path.normpath(path)
-            if not os.path.isabs(full_path):
-                # If relative, it's relative to current working directory
-                full_path = os.path.abspath(full_path)
-            
-            # 2. Check if file exists
             if not os.path.exists(full_path):
-                return ToolResult(success=False, error=f"File Not Found: '{full_path}'", content="")
-            if not os.path.isfile(full_path):
-                return ToolResult(success=False, error=f"Not a File: '{full_path}' is a directory or special file.", content="")
-                
-            # 3. Detect Binary (Quick check by reading first 1024 bytes)
+                return ToolResult.error_result(
+                    f"File not found: {path}",
+                    details={"path": path, "offset": offset}
+                )
+            
+            if os.path.isdir(path):
+                return ToolResult.error_result(
+                    f"Path is a directory: {path}",
+                    details={"path": path}
+                )
+            
+            # 2. Detect Binary (Quick check)
             with open(full_path, 'rb') as f:
                 chunk = f.read(1024)
                 if b'\x00' in chunk:
-                    return ToolResult(
-                        success=False, 
-                        error=f"Binary File Detected: '{path}' cannot be read as text.", 
-                        content=""
+                    return ToolResult.error_result(
+                        f"Binary file detected: {path}",
+                        details={"path": path}
                     )
-                    
-            # 4. Read Lines with pagination
+
+            # 3. Read Lines with pagination
             with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
                 # Fast forward to offset
                 for _ in range(offset):
                     if not f.readline():
                         break
-                        
-                # Read specified number of lines
+                
                 lines = []
                 for _ in range(limit):
                     line = f.readline()
                     if not line:
                         break
-                    lines.append(line.rstrip('\r\n'))
-                    
-                # Check for remaining content
-                has_more = bool(f.readline())
+                    lines.append(line.rstrip('\n\r'))
                 
-            # 5. Format Output
-            # We add 1-based line numbers for the LLM's convenience.
-            content = ""
-            for i, line in enumerate(lines):
-                content += f"{offset + i + 1}: {line}\n"
+                # Check for continuation
+                more_line = f.readline()
+                truncated = len(lines) >= limit or bool(more_line)
                 
-            if has_more:
-                content += f"\n\n[Showing lines {offset+1} to {offset+len(lines)}. Use offset={offset+len(lines)} to read more.]"
+                content = '\n'.join(f"{offset + i + 1}: {line}" for i, line in enumerate(lines))
                 
-            return ToolResult(
-                success=True,
-                content=content if content else "(File is empty or reached end of file)",
-                details={"offset": offset, "limit": limit, "count": len(lines), "truncated": has_more}
+                if truncated:
+                    content += f"\n\n[Showing lines {offset+1}-{offset + len(lines)}. Use offset={offset + len(lines)} to read more.]"
+                
+                return ToolResult.text_result(
+                    content if content else "(File is empty or reached end of file)",
+                    details={"offset": offset, "limit": limit, "truncated": truncated, "path": path}
+                )
+        
+        except PermissionError:
+            return ToolResult.error_result(
+                f"Permission denied: {path}",
+                details={"path": path},
+                hint="Check file permissions. You may need to run with elevated privileges or use 'exec' with sudo."
             )
-            
         except Exception as e:
-            return ToolResult(success=False, error=f"Read Operation Failed: {str(e)}", content="")
+            return ToolResult.error_result(
+                f"Error reading file: {type(e).__name__}: {str(e)}",
+                details={"path": path, "offset": offset},
+                hint="The file may be corrupted or in an unsupported format."
+            )

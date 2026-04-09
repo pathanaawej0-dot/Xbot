@@ -29,10 +29,9 @@ class ToolExecutor:
             # 1. Lookup tool
             tool = self.tools.get(tool_name)
             if not tool:
-                return ToolResult(
-                    success=False,
-                    error=f"Unrecognized Tool: '{tool_name}'. Please check the tool definitions.",
-                    content=""
+                return ToolResult.error_result(
+                    f"Unrecognized Tool: '{tool_name}'",
+                    hint="Check the available tools list (Definition Cache) or verify spelling."
                 )
                 
             # 2. Execution
@@ -43,10 +42,10 @@ class ToolExecutor:
         except Exception as e:
             # Catch-all for tool-specific crashes (The 'No Invisible Crashes' guarantee)
             logger.error(f"Internal Tool Error in '{tool_name}': {str(e)}", exc_info=True)
-            return ToolResult(
-                success=False, 
-                error=f"Internal Tool Failure: {str(e)}.",
-                content=""
+            return ToolResult.error_result(
+                f"Tool Internal Failure: {type(e).__name__}: {str(e)}",
+                details={"error_type": type(e).__name__},
+                hint="This is an unexpected crash in the tool's backend logic."
             )
             
     def get_tool_definitions(self) -> List[Dict[str, Any]]:

@@ -42,6 +42,13 @@ IMPORTANT: This tool can access internal services. Use responsibly.
             "required": ["url"]
         }
 
+    BLOCKED_IP_PREFIXES = [
+        '127.', '10.', '172.16.', '172.17.', '172.18.', '172.19.',
+        '172.20.', '172.21.', '172.22.', '172.23.', '172.24.',
+        '172.25.', '172.26.', '172.27.', '172.28.', '172.29.',
+        '172.30.', '172.31.', '192.168.', '169.254.'
+    ]
+
     async def execute(
         self, 
         url: str, 
@@ -51,10 +58,37 @@ IMPORTANT: This tool can access internal services. Use responsibly.
         body: Optional[str] = None, 
         timeout: float = 30.0
     ) -> ToolResult:
-        """Fetch and process web content with zero restrictions."""
+        """Fetch and process web content with diagnostic support."""
         try:
-            # 1. No SSRF Check (Removed self.ssrf_checker.check(url))
+            # 1. SSRF Check
+            from urllib.parse import urlparse
+            import socket
             
+            parsed = urlparse(url)
+            hostname = parsed.hostname or ''
+            
+            if hostname in ('localhost', 'metadata.google.internal'):
+                return ToolResult.error_result(
+                    f"Blocked internal hostname: {hostname}",
+                    details={"url": url, "hostname": hostname},
+                    hint="Cannot access internal/cloud metadata endpoints."
+                    details={"url": url, "hostname": hostname}
+                )
+            
+            try:
+                ip_str = socket.gethostbyname(hostname)
+                for prefix in self.BLOCKED_IP_PREFIXES:
+                    if ip_str.startswith(prefix):
+                        return ToolResult.error_result(
+                            f"Blocked private IP range: {ip_str}",
+                            details={"url": url, "ip": ip_str, "hostname": hostname}
+                        )
+            except socket.gaierror:
+                return ToolResult.error_result(
+                    f"Could not resolve hostname: {hostname}",
+                    details={"url": url, "hostname": hostname}
+                )
+
             # 2. Make Request
             async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
                 response = await client.request(
@@ -74,23 +108,35 @@ IMPORTANT: This tool can access internal services. Use responsibly.
                     except Exception:
                         content = response.text
                 elif 'text/html' in content_type:
-                    # HTML response - convert to Markdown
                     content = self.html_to_markdown(response.text)
                 else:
                     content = response.text[:2_000_000]
+                
+                if response.status_code >= 400:
+                    return ToolResult.error_result(
+                        f"HTTP {response.status_code}: {response.reason_phrase}",
+                        details={"status": response.status_code, "url": str(response.url)}
+                    )
                     
-                return ToolResult(
-                    success=response.status_code < 400,
-                    content=content,
+                return ToolResult.text_result(
+                    content,
                     details={
                         "status": response.status_code,
                         "url": str(response.url),
                         "content_type": content_type
                     }
                 )
-                
+        
+        except httpx.TimeoutException:
+            return ToolResult.error_result(
+                f"Request timed out after {timeout} seconds",
+                details={"url": url, "timeout": timeout}
+            )
         except Exception as e:
-            return ToolResult(success=False, error=f"Web Fetch Operation Failed: {str(e)}", content="")
+            return ToolResult.error_result(
+                f"Web Fetch Failed: {type(e).__name__}: {str(e)}",
+                details={"url": url}
+            )
             
     def html_to_markdown(self, html: str) -> str:
         """Heuristic HTML to Markdown converter."""

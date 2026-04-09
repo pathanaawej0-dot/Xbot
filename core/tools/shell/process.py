@@ -43,7 +43,7 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
         }
 
     async def execute(self, action: str, session_id: Optional[str] = None, data: Optional[str] = None) -> ToolResult:
-        """Handle process lifecycle management."""
+        """Handle process lifecycle management with diagnostic support."""
         
         # 1. Action: List
         if action == "list":
@@ -54,19 +54,23 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
                     "pid": proc.pid,
                     "running": proc.returncode is None
                 })
-            return ToolResult(
-                success=True,
-                content=f"Active Background Processes: {active_list}",
+            return ToolResult.text_result(
+                f"Active Background Processes: {active_list}",
                 details={"active_count": len(active_list)}
             )
             
         # 2. Validation for targeted actions
         if not session_id:
-            return ToolResult(success=False, error="Parameter 'session_id' is required for this action.", content="")
+            return ToolResult.error_result(
+                "Parameter 'session_id' is required for this action."
+            )
             
         proc = self.running_processes.get(session_id)
         if not proc:
-            return ToolResult(success=False, error=f"Process Error: No active process found with session_id '{session_id}'.", content="")
+            return ToolResult.error_result(
+                f"No active process found with session_id '{session_id}'",
+                details={"session_id": session_id}
+            )
             
         # 3. Action: Poll
         if action == "poll":
@@ -74,28 +78,23 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
                 # Process already finished
                 stdout, stderr = await proc.communicate()
                 del self.running_processes[session_id]
-                return ToolResult(
-                    success=True,
-                    content=stdout.decode(errors='replace'),
+                return ToolResult.text_result(
+                    stdout.decode(errors='replace'),
                     details={"status": "finished", "returncode": proc.returncode, "stderr": stderr.decode(errors='replace')}
                 )
             else:
-                # Still running, try a non-blocking wait
+                # Still running check
                 try:
-                    # We use a short wait to see if it just finished
-                    # asyncio doesn't have a direct non-blocking wait_for without a timeout
                     await asyncio.wait_for(proc.wait(), timeout=0.1)
                     stdout, stderr = await proc.communicate()
                     del self.running_processes[session_id]
-                    return ToolResult(
-                        success=True,
-                        content=stdout.decode(errors='replace'),
+                    return ToolResult.text_result(
+                        stdout.decode(errors='replace'),
                         details={"status": "finished", "returncode": proc.returncode}
                     )
                 except asyncio.TimeoutError:
-                    return ToolResult(
-                        success=True,
-                        content="",
+                    return ToolResult.text_result(
+                        "(Process is still running. No new output captured.)",
                         details={"status": "running", "pid": proc.pid}
                     )
                     
@@ -105,22 +104,22 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
                 proc.kill()
                 await proc.wait()
                 del self.running_processes[session_id]
-                return ToolResult(success=True, content=f"Process {session_id} terminated successfully.")
+                return ToolResult.text_result(f"Process {session_id} terminated successfully.")
             except Exception as e:
-                return ToolResult(success=False, error=f"Kill Failure: {str(e)}", content="")
+                return ToolResult.error_result(f"Kill Failure: {str(e)}")
                 
         # 5. Action: Send
         if action == "send":
             if not data:
-                return ToolResult(success=False, error="Parameter 'data' is required for the 'send' action.", content="")
+                return ToolResult.error_result("Parameter 'data' is required for the 'send' action.")
             try:
                 if proc.stdin:
                     proc.stdin.write(data.encode())
                     await proc.stdin.drain()
-                    return ToolResult(success=True, content="Data transmitted to process stdin.")
+                    return ToolResult.text_result("Data transmitted to process stdin.")
                 else:
-                    return ToolResult(success=False, error="Process Error: stdin is not available for this process.", content="")
+                    return ToolResult.error_result("Process Error: stdin is not available for this process.")
             except Exception as e:
-                return ToolResult(success=False, error=f"Send Failure: {str(e)}", content="")
+                return ToolResult.error_result(f"Send Failure: {str(e)}")
                 
-        return ToolResult(success=False, error=f"Unknown Action: '{action}'", content="")
+        return ToolResult.error_result(f"Unknown Action: '{action}'")

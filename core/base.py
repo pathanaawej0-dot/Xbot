@@ -4,11 +4,29 @@ from typing import Any, Optional, Dict
 
 @dataclass
 class ToolResult:
-    """Standard return type for all Xbot tools."""
-    success: bool
-    content: str  # The primary info the LLM sees
-    error: Optional[str] = field(default=None)
+    """Standard return type for all Xbot tools with diagnostic support."""
+    content: list[dict]   # [{"type": "text", "text": "..."}]
     details: Optional[Dict[str, Any]] = field(default_factory=dict)
+    is_error: bool = False
+
+    @staticmethod
+    def text_result(text: str, details: Optional[Dict[str, Any]] = None) -> 'ToolResult':
+        """Helper to create a successful text result."""
+        return ToolResult(
+            content=[{"type": "text", "text": text}],
+            details=details,
+            is_error=False
+        )
+
+    @staticmethod
+    def error_result(text: str, details: Optional[Dict[str, Any]] = None) -> 'ToolResult':
+        """Helper to create an error result."""
+        content = [{"type": "text", "text": text}]
+        return ToolResult(
+            content=content,
+            details=details,
+            is_error=True
+        )
 
 class BaseTool(ABC):
     """Base class for all Xbot tools.

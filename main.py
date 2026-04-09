@@ -8,6 +8,19 @@ load_dotenv()
 
 async def main():
     """Main CLI entry point for Xbot AI Agent (Async)."""
+    # Check for CLI arguments (for sub-agents)
+    if len(sys.argv) > 1:
+        task = " ".join(sys.argv[1:])
+        try:
+            agent = XbotAgent()
+            print(f"[Sub-Agent] Running task: {task}")
+            await agent.run(task)
+            print("[Sub-Agent] Task complete.")
+            return
+        except Exception as e:
+            print(f"[Sub-Agent] Error: {e}")
+            sys.exit(1)
+
     print("=" * 30)
     print("Welcome to Xbot - Your Autonomous AI Agent")
     print("=" * 30)
