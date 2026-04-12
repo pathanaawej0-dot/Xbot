@@ -3,6 +3,7 @@ import os
 import time
 from typing import Dict, Any, Optional
 from core.base import BaseTool, ToolResult
+from core.process_registry import ProcessRegistry
 
 class ExecTool(BaseTool):
     """Execution Tool for running shell commands.
@@ -34,6 +35,10 @@ EXAMPLES:
 
 IMPORTANT: This tool provides full system access. Use it wisely.
 """
+
+    def __init__(self, registry: ProcessRegistry = None):
+        super().__init__()
+        self.registry = registry
 
     def get_schema(self) -> Dict[str, Any]:
         return {
@@ -76,9 +81,12 @@ IMPORTANT: This tool provides full system access. Use it wisely.
             
             # 3. Handle Background Mode
             if background:
+                session_id = str(process.pid)
+                if self.registry:
+                    self.registry.add_process(session_id, process, command, workdir)
                 return ToolResult.text_result(
                     f"Background process started: PID={process.pid}",
-                    details={"pid": process.pid, "session_id": str(process.pid)}
+                    details={"pid": process.pid, "session_id": session_id}
                 )
                 
             # 4. Handle Synchronous Mode with Timeout

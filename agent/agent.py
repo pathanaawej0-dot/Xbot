@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from core.executor import ToolExecutor
 from core.skills.registry import SkillRegistry
 from core.prompts import SYSTEM_PROMPT
+from core.mcp_manager import MCPManager
+from core.process_registry import ProcessRegistry
 
 # Import Tools
 from core.tools.shell.exec import ExecTool
@@ -21,6 +23,15 @@ from core.tools.filesystem.apply_patch import ApplyPatchTool
 from core.tools.web.fetch import WebFetchTool
 from core.tools.web.search import WebSearchTool
 from core.tools.system.orchestrator import SpawnAgentTool, InstallSkillTool
+from core.tools.system.mcp_tools import ConnectMCPTool, ListMCPTool
+from core.tools.browser.browser_tools import (
+    BrowserOpenTool,
+    BrowserNavigateTool,
+    BrowserInteractTool,
+    BrowserInspectTool,
+    BrowserProfileCreateTool,
+    BrowserProfileListTool
+)
 
 load_dotenv()
 
@@ -44,9 +55,15 @@ class XbotAgent:
         # 1.1 Initialize Skill System
         self.skill_registry = SkillRegistry(skills_dir="skills")
         
+        # 1.2 Initialize MCP System
+        self.mcp_manager = MCPManager()
+        
+        # 1.3 Initialize Process Tracking
+        self.process_registry = ProcessRegistry()
+        
         # 2. Register All Tools
-        self.executor.register(ExecTool())
-        self.executor.register(ProcessTool(self.executor.tools)) # Share process state
+        self.executor.register(ExecTool(self.process_registry))
+        self.executor.register(ProcessTool(self.process_registry)) # Correctly share registry
         self.executor.register(ReadTool())
         self.executor.register(WriteTool())
         self.executor.register(EditTool())
@@ -56,6 +73,14 @@ class XbotAgent:
         self.executor.register(WebSearchTool())
         self.executor.register(SpawnAgentTool())
         self.executor.register(InstallSkillTool())
+        self.executor.register(ConnectMCPTool(self.mcp_manager, self.executor))
+        self.executor.register(ListMCPTool(self.mcp_manager))
+        self.executor.register(BrowserOpenTool())
+        self.executor.register(BrowserNavigateTool())
+        self.executor.register(BrowserInteractTool())
+        self.executor.register(BrowserInspectTool())
+        self.executor.register(BrowserProfileCreateTool())
+        self.executor.register(BrowserProfileListTool())
         
         # 3. Cache Tool Definitions for LLM
         self.tools = self.executor.get_tool_definitions()
@@ -78,6 +103,10 @@ class XbotAgent:
         self.messages.append({"role": "user", "content": prompt})
         
         while True:
+            # 0. Sync MCP Tools (if any are connected)
+            # This ensures dynamic tools appear in the next turn
+            self.tools = self.executor.get_tool_definitions()
+
             print("\n", end="", flush=True)
             
             # Get fully assembled system prompt

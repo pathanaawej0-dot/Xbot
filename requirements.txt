@@ -1,7 +1,10 @@
 anthropic
 python-dotenv
 google-genai
+mcp
 httpx
 html2text
 beautifulsoup4
 PyYAML
+playwright
+playwright-stealth

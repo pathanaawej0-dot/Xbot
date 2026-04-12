@@ -7,24 +7,27 @@ class ToolResult:
     """Standard return type for all Xbot tools with diagnostic support."""
     content: list[dict]   # [{"type": "text", "text": "..."}]
     details: Optional[Dict[str, Any]] = field(default_factory=dict)
+    hint: Optional[str] = None
     is_error: bool = False
 
     @staticmethod
-    def text_result(text: str, details: Optional[Dict[str, Any]] = None) -> 'ToolResult':
+    def text_result(text: str, details: Optional[Dict[str, Any]] = None, hint: Optional[str] = None) -> 'ToolResult':
         """Helper to create a successful text result."""
         return ToolResult(
             content=[{"type": "text", "text": text}],
             details=details,
+            hint=hint,
             is_error=False
         )
 
     @staticmethod
-    def error_result(text: str, details: Optional[Dict[str, Any]] = None) -> 'ToolResult':
+    def error_result(text: str, details: Optional[Dict[str, Any]] = None, hint: Optional[str] = None) -> 'ToolResult':
         """Helper to create an error result."""
         content = [{"type": "text", "text": text}]
         return ToolResult(
             content=content,
             details=details,
+            hint=hint,
             is_error=True
         )
 

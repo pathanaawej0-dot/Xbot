@@ -72,7 +72,6 @@ IMPORTANT: This tool can access internal services. Use responsibly.
                     f"Blocked internal hostname: {hostname}",
                     details={"url": url, "hostname": hostname},
                     hint="Cannot access internal/cloud metadata endpoints."
-                    details={"url": url, "hostname": hostname}
                 )
             
             try:

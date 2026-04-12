@@ -1,6 +1,7 @@
 import asyncio
 from typing import Dict, Any, Optional, List
 from core.base import BaseTool, ToolResult
+from core.process_registry import ProcessRegistry
 
 class ProcessTool(BaseTool):
     """Process Management Tool for inspecting and controlling background commands.
@@ -25,11 +26,9 @@ ACTIONS:
 Use the 'session_id' (PID) returned by the 'exec' tool's background mode response.
 """
 
-    def __init__(self, running_processes: Dict[str, Any] = None):
+    def __init__(self, registry: ProcessRegistry = None):
         super().__init__()
-        # In this implementation, we share the process pool with the executor
-        # session_id -> asyncio.subprocess.Process
-        self.running_processes = running_processes or {}
+        self.registry = registry
 
     def get_schema(self) -> Dict[str, Any]:
         return {
@@ -47,13 +46,7 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
         
         # 1. Action: List
         if action == "list":
-            active_list = []
-            for sid, proc in self.running_processes.items():
-                active_list.append({
-                    "session_id": sid,
-                    "pid": proc.pid,
-                    "running": proc.returncode is None
-                })
+            active_list = self.registry.list_processes() if self.registry else []
             return ToolResult.text_result(
                 f"Active Background Processes: {active_list}",
                 details={"active_count": len(active_list)}
@@ -65,7 +58,7 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
                 "Parameter 'session_id' is required for this action."
             )
             
-        proc = self.running_processes.get(session_id)
+        proc = self.registry.get_process(session_id) if self.registry else None
         if not proc:
             return ToolResult.error_result(
                 f"No active process found with session_id '{session_id}'",
@@ -77,7 +70,8 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
             if proc.returncode is not None:
                 # Process already finished
                 stdout, stderr = await proc.communicate()
-                del self.running_processes[session_id]
+                if self.registry:
+                    self.registry.remove_process(session_id)
                 return ToolResult.text_result(
                     stdout.decode(errors='replace'),
                     details={"status": "finished", "returncode": proc.returncode, "stderr": stderr.decode(errors='replace')}
@@ -87,7 +81,8 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=0.1)
                     stdout, stderr = await proc.communicate()
-                    del self.running_processes[session_id]
+                    if self.registry:
+                        self.registry.remove_process(session_id)
                     return ToolResult.text_result(
                         stdout.decode(errors='replace'),
                         details={"status": "finished", "returncode": proc.returncode}
@@ -103,7 +98,8 @@ Use the 'session_id' (PID) returned by the 'exec' tool's background mode respons
             try:
                 proc.kill()
                 await proc.wait()
-                del self.running_processes[session_id]
+                if self.registry:
+                    self.registry.remove_process(session_id)
                 return ToolResult.text_result(f"Process {session_id} terminated successfully.")
             except Exception as e:
                 return ToolResult.error_result(f"Kill Failure: {str(e)}")

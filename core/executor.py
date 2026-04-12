@@ -16,8 +16,13 @@ class ToolExecutor:
         self.tools: Dict[str, BaseTool] = {}
         
     def register(self, tool: BaseTool):
-        """Add a tool to the registry."""
+        """Add a tool to the registry. Overwrites if name already exists."""
         self.tools[tool.name] = tool
+
+    def unregister(self, tool_name: str):
+        """Remove a tool from the registry."""
+        if tool_name in self.tools:
+            del self.tools[tool_name]
         
     async def execute(self, tool_name: str, params: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
         """Execute a tool by its identifier.

@@ -27,13 +27,17 @@ EXAMPLES:
 - "latest BTC price" → gets live data.
 - "Premier League table today" → gets current standings.
 - "Python 3.12 release notes" → gets real docs.
+
+LATENCY AWARENESS:
+This tool involves a real-time internet search and LLM grounding. It typically takes 5-10 seconds to complete. 
+If you are running this as part of a larger plan, explain to the user that you are "Searching the web..." before calling the tool.
 """
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__()
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
         # Use Google GenAI REST API for high-fidelity grounding
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite-preview-02-05:generateContent"
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
     def get_schema(self) -> Dict[str, Any]:
         return {
