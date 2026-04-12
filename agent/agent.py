@@ -30,7 +30,10 @@ from core.tools.browser.browser_tools import (
     BrowserInteractTool,
     BrowserInspectTool,
     BrowserProfileCreateTool,
-    BrowserProfileListTool
+    BrowserProfileListTool,
+    BrowserGetCookiesTool,
+    BrowserSetCookiesTool,
+    BrowserClearStorageTool
 )
 
 load_dotenv()
@@ -60,6 +63,9 @@ class XbotAgent:
         
         # 1.3 Initialize Process Tracking
         self.process_registry = ProcessRegistry()
+
+        # 1.4 Ensure Workspace directory exists
+        os.makedirs("workspace", exist_ok=True)
         
         # 2. Register All Tools
         self.executor.register(ExecTool(self.process_registry))
@@ -81,6 +87,9 @@ class XbotAgent:
         self.executor.register(BrowserInspectTool())
         self.executor.register(BrowserProfileCreateTool())
         self.executor.register(BrowserProfileListTool())
+        self.executor.register(BrowserGetCookiesTool())
+        self.executor.register(BrowserSetCookiesTool())
+        self.executor.register(BrowserClearStorageTool())
         
         # 3. Cache Tool Definitions for LLM
         self.tools = self.executor.get_tool_definitions()

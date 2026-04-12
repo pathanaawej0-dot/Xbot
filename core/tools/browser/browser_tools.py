@@ -14,11 +14,11 @@ Each profile (e.g., 'default', 'work') maintains isolated cookies and logins.
         return {
             "type": "object", 
             "properties": {
-                "profile": {"type": "string", "description": "Profile name (default: 'default')"}
+                "profile": {"type": "string", "description": "Profile name (default: 'Xbot')"}
             }
         }
 
-    async def execute(self, profile: str = "default") -> ToolResult:
+    async def execute(self, profile: str = "Xbot") -> ToolResult:
         try:
             await browser_manager.get_page(profile)
             return ToolResult.text_result(f"Browser opened/focused for profile '{profile}' successfully.")
@@ -27,19 +27,19 @@ Each profile (e.g., 'default', 'work') maintains isolated cookies and logins.
 
 class BrowserNavigateTool(BaseTool):
     name = "browser_navigate"
-    description = "Navigates the browser to a specific URL."
+    description = "Navigates the browser to a specific URL. Favor Google (google.com) for manual searches to ensure consistency."
     
     def get_schema(self) -> Dict[str, Any]:
         return {
             "type": "object",
             "properties": {
                 "url": {"type": "string", "description": "The URL to navigate to."},
-                "profile": {"type": "string", "description": "Profile name (default: 'default')"}
+                "profile": {"type": "string", "description": "Profile name (default: 'Xbot')"}
             },
             "required": ["url"]
         }
 
-    async def execute(self, url: str, profile: str = "default") -> ToolResult:
+    async def execute(self, url: str, profile: str = "Xbot") -> ToolResult:
         try:
             page = await browser_manager.get_page(profile)
             await page.goto(url, wait_until="domcontentloaded")
@@ -67,12 +67,12 @@ Example actions:
                 "key": {"type": "string", "description": "Key to press (for 'press' action)."},
                 "direction": {"type": "string", "enum": ["up", "down"], "description": "Scroll direction."},
                 "amount": {"type": "integer", "description": "Amount in pixels to scroll."},
-                "profile": {"type": "string", "description": "Profile name (default: 'default')"}
+                "profile": {"type": "string", "description": "Profile name (default: 'Xbot')"}
             },
             "required": ["action"]
         }
 
-    async def execute(self, action: str, profile: str = "default", **kwargs) -> ToolResult:
+    async def execute(self, action: str, profile: str = "Xbot", **kwargs) -> ToolResult:
         try:
             page = await browser_manager.get_page(profile)
             if action == "click":
@@ -104,11 +104,11 @@ class BrowserInspectTool(BaseTool):
             "type": "object",
             "properties": {
                 "mode": {"type": "string", "enum": ["info", "screenshot"], "default": "info"},
-                "profile": {"type": "string", "description": "Profile name (default: 'default')"}
+                "profile": {"type": "string", "description": "Profile name (default: 'Xbot')"}
             }
         }
 
-    async def execute(self, mode: str = "info", profile: str = "default") -> ToolResult:
+    async def execute(self, mode: str = "info", profile: str = "Xbot") -> ToolResult:
         try:
             page = await browser_manager.get_page(profile)
             if mode == "info":
@@ -160,3 +160,66 @@ class BrowserProfileListTool(BaseTool):
             return ToolResult.text_result(result)
         except Exception as e:
             return ToolResult.error_result(f"Failed to list profiles: {str(e)}")
+
+class BrowserGetCookiesTool(BaseTool):
+    name = "browser_get_cookies"
+    description = "Retrieves all cookies for the current session or a specific domain."
+    def get_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "domain": {"type": "string", "description": "Filter by domain (optional)."},
+                "profile": {"type": "string", "description": "Profile name (default: 'Xbot')"}
+            }
+        }
+
+    async def execute(self, domain: Optional[str] = None, profile: str = "Xbot") -> ToolResult:
+        try:
+            page = await browser_manager.get_page(profile)
+            cookies = await page.context.cookies()
+            if domain:
+                cookies = [c for c in cookies if domain in c["domain"]]
+            return ToolResult.text_result(json.dumps(cookies, indent=2))
+        except Exception as e:
+            return ToolResult.error_result(f"Failed to get cookies: {str(e)}")
+
+class BrowserSetCookiesTool(BaseTool):
+    name = "browser_set_cookies"
+    description = "Injects cookies into the browser context."
+    def get_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "cookies": {"type": "array", "items": {"type": "object"}, "description": "List of cookie objects."},
+                "profile": {"type": "string", "description": "Profile name (default: 'Xbot')"}
+            },
+            "required": ["cookies"]
+        }
+
+    async def execute(self, cookies: list, profile: str = "Xbot") -> ToolResult:
+        try:
+            page = await browser_manager.get_page(profile)
+            await page.context.add_cookies(cookies)
+            return ToolResult.text_result(f"Successfully injected {len(cookies)} cookies into profile '{profile}'.")
+        except Exception as e:
+            return ToolResult.error_result(f"Failed to set cookies: {str(e)}")
+
+class BrowserClearStorageTool(BaseTool):
+    name = "browser_clear_storage"
+    description = "Clears storage (cookies, localStorage, etc.) for the browser profile."
+    def get_schema(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "profile": {"type": "string", "description": "Profile name (default: 'Xbot')"}
+            }
+        }
+
+    async def execute(self, profile: str = "Xbot") -> ToolResult:
+        try:
+            page = await browser_manager.get_page(profile)
+            await page.context.clear_cookies()
+            await page.evaluate("localStorage.clear(); sessionStorage.clear();")
+            return ToolResult.text_result(f"Storage cleared for profile '{profile}'.")
+        except Exception as e:
+            return ToolResult.error_result(f"Failed to clear storage: {str(e)}")

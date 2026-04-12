@@ -27,15 +27,15 @@ class ProfileManager:
         # Default registry structure
         default_registry = {
             "profiles": {
-                "default": {
+                "Xbot": {
                     "cdp_port": 9222,
                     "color": "#FF4500",
                     "driver": "managed",
-                    "user_data_dir": str(BROWSER_DIR / "default" / "user-data"),
+                    "user_data_dir": str(BROWSER_DIR / "Xbot" / "user-data"),
                     "created_at": datetime.utcnow().isoformat()
                 }
             },
-            "default_profile": "default",
+            "default_profile": "Xbot",
             "cdp_port_range_start": 9222,
             "cdp_port_range_end": 9321
         }
